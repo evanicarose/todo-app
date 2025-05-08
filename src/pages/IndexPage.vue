@@ -65,8 +65,10 @@ export default defineComponent({
         // Adding a new task
         try {
           const response = await axios.post("https://jsonplaceholder.typicode.com/todos", taskData);
-          tasks.value.push(response.data);
+          response.data.id = Date.now(); // Assign a temporary unique ID to simulate persistence
+          tasks.value.unshift(response.data);
           taskName.value = "";  // Clear the input
+
         } catch (error) {
           console.error(error);
         }
