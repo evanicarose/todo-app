@@ -1,111 +1,236 @@
 <template>
   <q-page padding>
-    <div class="q-mb-md">
-      <q-input v-model="taskName" label="Task Name" filled />
-    </div>
+    <q-card>
+      <!-- Header Section -->
+      <q-card-section>
+        <div class="text-h6">To-Do Application</div>
+      </q-card-section>
 
-    <q-btn @click="addOrEditTask" :label="currentTask ? 'Update Task' : 'Add Task'" color="primary" />
+      <!-- Task Form -->
+      <q-card-section>
+        <q-form @submit.prevent="isEditing ? updateTask() : addTask()">
+          <div class="row q-col-gutter-sm">
+            <div class="col">
+              <q-input
+                v-model="task.title"
+                label="Task Name"
+                filled
+                dense
+                required
+              />
+            </div>
+            <div class="col-auto">
+              <q-btn
+                type="submit"
+                :label="isEditing ? 'Update' : 'Add'"
+                color="primary"
+                icon="save"
+              />
+              <q-btn
+                v-if="isEditing"
+                label="Cancel"
+                color="secondary"
+                flat
+                @click="cancelEdit"
+              />
+            </div>
+          </div>
+        </q-form>
+      </q-card-section>
 
-    <q-list bordered v-if="tasks.length">
-      <q-item v-for="task in tasks" :key="task.id">
-        <q-item-section>
-          <q-item-label>{{ task.title }}</q-item-label>
-        </q-item-section>
-        <q-item-section>
-          <q-btn @click="editTask(task)" icon="edit" flat />
-          <q-btn @click="deleteTask(task.id)" icon="delete" flat />
-        </q-item-section>
-      </q-item>
-    </q-list>
+      <!-- Task List Section -->
+      <q-card-section>
+        <q-list bordered>
+          <q-item
+            v-for="todo in paginatedTodos"
+            :key="todo.id"
+            clickable
+            v-ripple
+          >
+            <q-item-section>
+              <div>{{ todo.title }}</div>
+            </q-item-section>
+            <q-item-section side>
+              <div class="row q-col-gutter-sm">
+                <div class="col-auto">
+                  <q-btn
+                    icon="edit"
+                    color="primary"
+                    flat
+                    @click="editTask(todo)"
+                  />
+                </div>
+                <div class="col-auto">
+                  <q-btn
+                    icon="delete"
+                    color="negative"
+                    flat
+                    @click="deleteTask(todo.id)"
+                  />
+                </div>
+              </div>
+            </q-item-section>
+          </q-item>
+        </q-list>
+      </q-card-section>
+
+      <!-- Pagination Section -->
+      <q-card-section>
+        <div class="row justify-center">
+          <q-btn
+            label="Previous"
+            :disabled="currentPage === 1"
+            color="primary"
+            @click="previousPage"
+          />
+          <q-btn
+            label="Next"
+            :disabled="currentPage * itemsPerPage >= todos.length"
+            color="primary"
+            @click="nextPage"
+          />
+        </div>
+      </q-card-section>
+    </q-card>
   </q-page>
 </template>
 
 <script>
-import { defineComponent, ref } from "vue";
-import axios from "axios";
+import { ref, computed, onMounted } from 'vue'  // Make sure computed is imported here
+import axios from 'axios'
 
-export default defineComponent({
-  name: "IndexPage",
+const API_URL = 'https://jsonplaceholder.typicode.com/todos'
+
+export default {
+  name: 'IndexPage',
   setup() {
-    const taskName = ref("");
-    const tasks = ref([]);
-    const currentTask = ref(null);  // To store the task being edited
+    const todos = ref([])
+    const task = ref({ title: '', id: null })
+    const isEditing = ref(false)
 
-    const getTasks = async () => {
+    const currentPage = ref(1)  // Current page number
+    const itemsPerPage = 10     // Number of tasks to display per page
+
+    // Fetch tasks (READ)
+    const fetchTasks = async () => {
       try {
-        const response = await axios.get("https://jsonplaceholder.typicode.com/todos");
-        tasks.value = response.data;
+        const res = await axios.get(API_URL, { params: { _limit: 2000 } })
+        todos.value = res.data
       } catch (error) {
-        console.error(error);
+        console.error('Fetch error:', error)
       }
-    };
+    }
 
-    // Function to add or edit a task
-    const addOrEditTask = async () => {
-      if (!taskName.value) return;
+    let localId = 1000 
 
-      const taskData = {
-        title: taskName.value,
-        completed: false,
-      };
+    // Add a new task (CREATE)
+    const addTask = async () => {
+      if (!task.value.title) return
 
-      if (currentTask.value) {
-        // Editing an existing task
-        try {
-          const updatedTask = { ...currentTask.value, title: taskName.value };
-          await axios.put(`https://jsonplaceholder.typicode.com/todos/${currentTask.value.id}`, updatedTask);
-          const index = tasks.value.findIndex(t => t.id === currentTask.value.id);
-          tasks.value[index] = updatedTask;
-          currentTask.value = null;  // Clear the current task after editing
-          taskName.value = "";  // Clear the input
-        } catch (error) {
-          console.error(error);
-        }
-      } else {
-        // Adding a new task
-        try {
-          const response = await axios.post("https://jsonplaceholder.typicode.com/todos", taskData);
-          response.data.id = Date.now(); // Assign a temporary unique ID to simulate persistence
-          tasks.value.unshift(response.data);
-          taskName.value = "";  // Clear the input
-
-        } catch (error) {
-          console.error(error);
-        }
-      }
-    };
-
-    const editTask = (task) => {
-      currentTask.value = task;
-      taskName.value = task.title;  // Set the input field to the task title for editing
-    };
-
-    const deleteTask = async (taskId) => {
       try {
-        await axios.delete(`https://jsonplaceholder.typicode.com/todos/${taskId}`);
-        tasks.value = tasks.value.filter(task => task.id !== taskId);
-      } catch (error) {
-        console.error(error);
-      }
-    };
+        const newTask = {
+          id: localId++, 
+          title: task.value.title,
+          completed: false,
+        }
 
-    // Fetch tasks on component mount
-    getTasks();
+        todos.value.unshift(newTask)
+
+        task.value = { title: '', id: null }
+      } catch (error) {
+        console.error('Add error:', error)
+      }
+    } 
+
+    // Edit an existing task (SETUP FOR UPDATE)
+    const editTask = (todo) => {
+      task.value = { ...todo }
+      isEditing.value = true
+    }
+
+    // Update a task (UPDATE)
+    const updateTask = async () => {
+      if (!task.value.title || !task.value.id) return
+
+      try {
+        let updatedTask = { ...task.value, completed: false }
+        if (task.value.id < 1000) {
+          const res = await axios.put(`${API_URL}/${task.value.id}`, {
+            title: task.value.title,
+            completed: false,
+          })
+          updatedTask = res.data
+        }
+        const index = todos.value.findIndex((t) => t.id === task.value.id)
+        if (index !== -1) {
+          todos.value[index] = updatedTask
+        }
+        task.value = { title: '', id: null }
+        isEditing.value = false
+      } catch (error) {
+        console.error('Update error:', error)
+      }
+    }
+
+    // Delete a task (DELETE)
+    const deleteTask = async (id) => {
+      try {
+        if (id < 1000) {
+          await axios.delete(`${API_URL}/${id}`)
+        }
+
+        todos.value = todos.value.filter((t) => t.id !== id)
+      } catch (error) {
+        console.error('Delete error:', error)
+      }
+    }
+
+    // Pagination: Get the tasks for the current page
+    const paginatedTodos = computed(() => {
+      const start = (currentPage.value - 1) * itemsPerPage
+      return todos.value.slice(start, start + itemsPerPage)
+    })
+
+    // Pagination: Go to the next page
+    const nextPage = () => {
+      if (currentPage.value * itemsPerPage < todos.value.length) {
+        currentPage.value++
+      }
+    }
+
+    // Pagination: Go to the previous page
+    const previousPage = () => {
+      if (currentPage.value > 1) {
+        currentPage.value--
+      }
+    }
+
+    onMounted(fetchTasks)
 
     return {
-      taskName,
-      tasks,
-      addOrEditTask,
+      todos,
+      task,
+      isEditing,
+      addTask,
       editTask,
+      updateTask,
       deleteTask,
-      currentTask,
-    };
+      paginatedTodos,
+      currentPage,
+      nextPage,
+      previousPage,
+    }
   },
-});
+}
 </script>
 
+
 <style scoped>
-.q-btn {
-  margin-top: 20px;
+.q-mt-sm {
+  margin-top: 1rem;
+}
+
+.q-ml-sm {
+  margin-left: 1rem;
 }
 </style>
